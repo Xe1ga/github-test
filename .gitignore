@@ -351,3 +351,5 @@ MigrationBackup/
 
 # ignore virtual enviroment
 github-test-env
+
+.vscode/
