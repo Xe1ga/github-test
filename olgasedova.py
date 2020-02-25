@@ -33,8 +33,11 @@ def main():
     except Exception:
         end_date = datetime.now().isoformat()
         
-    
-    branch = config.get("Parameters", "branch")
+    if config.get("Parameters", "branch"):
+        branch = config.get("Parameters", "branch")
+    else:
+        branch = "master"
+        
     input_contributors_statistic(contributors_statistic)
 
     print [url, begin_date, end_date, branch]
