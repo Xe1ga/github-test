@@ -1,19 +1,14 @@
 
 # -*- coding: utf8 -*-
 
-import ConfigParser
+import configparser 
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 from datetime import datetime
 
-def input_contributors_statistic(table):
-    for name, num_commits in table.items():
-        print('{0:10} ==> {1:10d}'.format(name, num_commits))
+def get_params ():
 
-def main():
-    u"""
-    Главная функция скрипта.
-    """
-    contributors_statistic = {'Sjoerd': 4127, 'Jack': 4098, 'Dcab': 7678}
-    config = ConfigParser.RawConfigParser()
+    config = configparser.RawConfigParser()
     config.read("config.ini")
     url = config.get("Parameters", "url")
 
@@ -37,10 +32,42 @@ def main():
         branch = config.get("Parameters", "branch")
     else:
         branch = "master"
-        
+    
+    return [url, begin_date, end_date, branch]
+
+def input_contributors_statistic(table):
+    for name, num_commits in table.items():
+        print('{0:10} ==> {1:10d}'.format(name, num_commits))
+
+def main():
+    u"""
+    Главная функция скрипта.
+    """
+    contributors_statistic = {'Sjoerd': 4127, 'Jack': 4098, 'Dcab': 7678}
+    
     input_contributors_statistic(contributors_statistic)
 
-    print [url, begin_date, end_date, branch]
+    params = get_params()
+    print (params)
 
+    accept = 'application/vnd.github.v3+json'
+    # alues = {'name': 'Michael Foord',
+    #       'location': 'Northampton',
+    #       'language': 'Python' }
+    headers = {'Accept': accept}
+    req = Request("https://github.com/fastlane/fastlane/graphs/contributors", None, headers)
+    try:
+        response = urlopen(req)
+    except URLError as e:
+        if hasattr(e, 'reason'):
+            print('We failed to reach a server.')
+            print('Reason: ', e.reason)
+        elif hasattr(e, 'code'):
+            print('The server couldn\'t fulfill the request.')
+            print('Error code: ', e.code)
+    else:
+        # everything is fine    
+        the_page = response.read()
+        print (the_page)
 if __name__ == "__main__":
     main()
