@@ -2,12 +2,17 @@
 # -*- coding: utf8 -*-
 
 import configparser 
+import json
+import http.client
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 from datetime import datetime
+from pprint import pprint
+
 
 def get_params ():
-
+    
+    result = {}
     config = configparser.RawConfigParser()
     config.read("config.ini")
     url = config.get("Parameters", "url")
@@ -32,8 +37,12 @@ def get_params ():
         branch = config.get("Parameters", "branch")
     else:
         branch = "master"
-    
-    return [url, begin_date, end_date, branch]
+    result = {"url": url,
+             "begin_date": begin_date,
+             "end_date": end_date,
+             "branch": branch}
+
+    return result
 
 def input_contributors_statistic(table):
     for name, num_commits in table.items():
@@ -43,10 +52,7 @@ def main():
     u"""
     Главная функция скрипта.
     """
-    contributors_statistic = {'Sjoerd': 4127, 'Jack': 4098, 'Dcab': 7678}
     
-    input_contributors_statistic(contributors_statistic)
-
     params = get_params()
     print (params)
 
@@ -55,7 +61,9 @@ def main():
     #       'location': 'Northampton',
     #       'language': 'Python' }
     headers = {'Accept': accept}
-    req = Request("https://github.com/fastlane/fastlane/graphs/contributors", None, headers)
+    url = "https://github.com/fastlane/fastlane/graphs/contributors?from=2016-03-23&to=2017-01-23"
+    # url += "?callback=foo"
+    req = Request(url, None, headers)
     try:
         response = urlopen(req)
     except URLError as e:
@@ -68,6 +76,19 @@ def main():
     else:
         # everything is fine    
         the_page = response.read()
-        print (the_page)
+        # pprint (the_page)
+    
+    # Get запрос
+    conn = http.client.HTTPSConnection("github.com")
+    headers = {'sha': params["branch"], 'since': params["begin_date"], 'until':params["end_date"]}
+    conn.request("GET", "/repos/fastlane/fastlane/commits", None, headers)
+    response = conn.getresponse()
+    data = response.read()
+    print(data)
+
+    # вывод результатов 
+    contributors_statistic = {'Sjoerd': 4127, 'Jack': 4098, 'Dcab': 7678}
+    input_contributors_statistic(contributors_statistic)
+
 if __name__ == "__main__":
     main()
