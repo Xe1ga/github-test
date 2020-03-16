@@ -1,6 +1,7 @@
 
 # -*- coding: utf8 -*-
 import os
+import sys
 import configparser 
 import json
 import urllib.parse
@@ -9,14 +10,11 @@ from urllib.error import URLError
 from datetime import datetime
 from pprint import pprint
 
-# API_KEY = "YOUR_API_KEY"
-API_KEY = "e71a5d86470c90f4d3ab712f65bdbb74e5df72ae"
 # API_KEY = os.environ.get('API_KEY')
 ACCEPT = "application/vnd.github.v3+json"
 
 def get_params ():
     
-    # import sys
     # data = sys.stdin.read()
     # print('Content-type: text/plain\n\nGot Data: "%s"' % data)
 
@@ -25,23 +23,17 @@ def get_params ():
     config.read("config.ini")
     url = config.get("Parameters", "url")
 
-    # try:
     if config.get("Parameters", "begin_date"):
         begin_date = datetime.strptime(config.get("Parameters", "begin_date"), "%d.%m.%Y")
-        begin_date = begin_date.combine(begin_date.date(), begin_date.min.time()).isoformat()
-    #     else:
-    #         begin_date = "01.01.2019"
-    # except Exception:
-    #     begin_date = "01.01.2019"
-
-    # try:
+        begin_date = begin_date.combine(begin_date.date(), begin_date.min.time())
+    else: 
+        begin_date = None
+    
     if config.get("Parameters", "end_date"):
         end_date = datetime.strptime(config.get("Parameters", "end_date"), "%d.%m.%Y")
-        end_date = end_date.combine(end_date.date(), end_date.max.time()).isoformat()
-    #     else:
-    #         end_date = datetime.now().isoformat()
-    # except Exception:
-    #     end_date = datetime.now().isoformat()
+        end_date = end_date.combine(end_date.date(), end_date.max.time())
+    else: 
+        end_date = None
         
     if config.get("Parameters", "branch"):
         branch = config.get("Parameters", "branch")
@@ -55,20 +47,23 @@ def get_params ():
     return result
 
 class GitHubStatistics(object):
-    def __init__(self, url_repository, since_date, until_date, branch='master'):
+    def __init__(self, url_repository, since_date, until_date, branch):
         self._URL_BASE = "https://api.github.com"
         self._url_repository = url_repository
         self._part_url = self._get_part_url()
         self._url_commits = self._get_url_commits()
         self._url_pull_requests = self._get_url_pull_requests()
+        self._API_KEY = self._get_api_key()
         self._since_date = since_date
         self._until_date = until_date
+        self._since_date_isoformat = self._get_date_to_isoformat(since_date)
+        self._until_date_isoformat = self._get_date_to_isoformat(until_date)
         self._branch = branch
         self._table_of_active_participants = self._get_table_of_active_participants()
         self._pull_requeststs_open = self._get_pull_requeststs("open")
         self._pull_requeststs_closed = self._get_pull_requeststs("closed")
         self._pull_requeststs_old = self._get_pull_requeststs("open", True)
-    
+
     def _get_part_url(self):
         u"""
         :type: string
@@ -81,23 +76,74 @@ class GitHubStatistics(object):
 
     def _get_url_pull_requests(self):
         return self._URL_BASE + "/repos/" + self._part_url + "/pulls"
+    
+    def _get_api_key(self):
+        u"""
+        Возвращает API_KEY
+        rtype: str
+        """
+
+        try:
+            config = configparser.RawConfigParser()
+            config.read("authentication.ini")
+            return  config.get("Parameters", "API_KEY")
+            
+        except Exception:
+            print ("Missing file containing API_KEY or problem loading data from authentication.ini file.")
+            return ""
+
+    def _get_date_to_isoformat(self, date_to_convert):
+        u"""
+        Возвращает дату в формате iso
+        :param date_to_convert: datetime.datetime
+        rtype: str
+        """
+        if date_to_convert:
+            return date_to_convert.isoformat()
+        else: 
+            return ""
+    def _get_date_from_isoformat(self, date_to_convert):
+        u"""
+        Возвращает дату в формате "%Y-%m-%d"
+        :param date_to_convert: str
+        rtype: datetime.datetime
+        """
+        if date_to_convert:
+            return datetime.fromisoformat(date_to_convert).date()
+        else: 
+            return None
 
     def _get_table_of_active_participants(self):
         
         result = []
         commit_list = []
         commit_dict = {}
-        # values = {'sha': self._branch, 'since': self._since_date, 'until': self._until_date, 'page': '17'}
-        values = {'sha': self._branch, 'since': self._since_date, 'until': self._until_date}
+        if self._since_date and self._until_date:
+            values = {'sha': self._branch, 'since': self._since_date_isoformat, 'until': self._until_date_isoformat}
+        elif self._since_date and self._until_date == None:
+            values = {'sha': self._branch, 'since': self._since_date_isoformat}
+        elif self._since_date == None and self._until_date:
+            values = {'sha': self._branch, 'until': self._until_date_isoformat}
+        else:
+            values = {'sha': self._branch}
         full_url = self._url_commits + "?" + urllib.parse.urlencode(values)
-        headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(API_KEY)}
+        headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(self._API_KEY)}
         print (full_url)
         # получаем количество страниц ответа
         num_of_pages = self._get_num_of_pages(full_url, headers)
         print (num_of_pages)
         if num_of_pages > 0:
             for page in range(1, num_of_pages + 1):
-                values = {'sha': self._branch, 'since': self._since_date, 'until': self._until_date, 'page': str(page)}
+                
+                if self._since_date and self._until_date:
+                    values = {'sha': self._branch, 'since': self._since_date_isoformat, 'until': self._until_date_isoformat, 'page': str(page)}
+                elif self._since_date and self._until_date == None:
+                    values = {'sha': self._branch, 'since': self._since_date_isoformat, 'page': str(page)}
+                elif self._since_date == None and self._until_date:
+                    values = {'sha': self._branch, 'until': self._until_date_isoformat, 'page': str(page)}
+                else:
+                    values = {'sha': self._branch, 'page': str(page)}
+
                 full_url = self._url_commits + "?" + urllib.parse.urlencode(values)
                 # создание объекта-запроса
                 req = Request(full_url, None, headers)
@@ -123,10 +169,10 @@ class GitHubStatistics(object):
         result = 0
         pull_request_list = []
         pull_request_dict = {}
-        # values = {'sha': self._branch, 'since': self._since_date, 'until': self._until_date, 'page': '17'}
-        values = {'state': state, 'base': self._branch, 'since': self._since_date, 'until': self._until_date}
+        
+        values = {'state': state, 'base': self._branch, 'since': self._since_date_isoformat, 'until': self._until_date_isoformat}
         full_url = self._url_pull_requests + "?" + urllib.parse.urlencode(values)
-        headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(API_KEY)}
+        headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(self._API_KEY)}
         print (full_url)
         # получаем количество страниц ответа
         num_of_pages = self._get_num_of_pages(full_url, headers)
@@ -145,15 +191,15 @@ class GitHubStatistics(object):
             if old:
                 for pull_request in pull_request_list:
                     if pull_request.get("created_at"):
-                        if (pull_request["created_at"] >= self._since_date and pull_request["created_at"] <= self._until_date
-                            and pull_request["state"] == "open" and (pull_request["closed_at"] == None) and abs(datetime.now() - datetime.strptime(pull_request["created_at"][:10], "%Y-%m-%d")).days > 30):
+                        if (self._get_date_from_isoformat(pull_request["created_at"]) >= self._since_date.date() and self._get_date_from_isoformat(pull_request["created_at"]) <= self._until_date.date()
+                            and pull_request["state"] == "open" and (pull_request["closed_at"] == None) and abs(datetime.now().date() - datetime.strptime(pull_request["created_at"][:10], "%Y-%m-%d")).days > 30):
                             result += 1
                             print (pull_request['id'])
-                            print (abs(datetime.now() - datetime.strptime(pull_request["created_at"][:10], "%Y-%m-%d")).days)
+                            print (abs(datetime.now().date() - datetime.strptime(pull_request["created_at"][:10], "%Y-%m-%d")).days)
             else:
                 for pull_request in pull_request_list:
                     if pull_request.get("created_at"):
-                        if pull_request["created_at"] >= self._since_date and pull_request["created_at"] <= self._until_date:
+                        if self._get_date_from_isoformat(pull_request["created_at"]) >= self._since_date.date() and self._get_date_from_isoformat(pull_request["created_at"]) <= self._until_date.date():
                             result += 1
             return result
         else:
@@ -232,16 +278,16 @@ def main():
     u"""
     Главная функция скрипта.
     """
-    # print (API_KEY)
     print(datetime.now())
+    
     params = get_params()
-    statistics_obj = GitHubStatistics(params["url"], params["begin_date"], params["end_date"], params["branch"])
+    # try:
+    statistics_obj = GitHubStatistics(params["url"], params["begin_date"] if params["begin_date"] else None, params["end_date"] if params["end_date"] else None, params["branch"] if params["branch"] else "master")
     statistics_obj.get_statistics()
+    # except Exception:
+    #     print ("No statistics were received. Verify that the parameters and API_KEY are entered correctly.")
+    
     print(datetime.now())
-    # print (statistics_obj._get_table_of_active_participants())
-    # url = "https://api.github.com/repos/fastlane/fastlane/commits"
-    # data = data if data else []
-    # input_participants_statistic(statistics_obj._table_of_active_participants)
-
+  
 if __name__ == "__main__":
     main()
