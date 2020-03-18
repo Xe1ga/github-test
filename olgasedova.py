@@ -48,9 +48,12 @@ def get_params ():
         if end_date == "":
             flag = False
         elif re.fullmatch(r'\d{2}\.\d{2}\.\d{4}', end_date):
-            flag = False
             end_date = datetime.strptime(end_date, "%d.%m.%Y")
             end_date = end_date.combine(end_date.date(), end_date.max.time()).isoformat()
+            if begin_date <= end_date:
+                flag = False
+            else:
+                sys.stdout.write("End date is less than start date.\n")
         else:
             sys.stdout.write("Date is incorrect.\n")
 
@@ -59,28 +62,6 @@ def get_params ():
     branch = sys.stdin.readline().strip("\n")
     if branch == '':
         branch = 'master'
-
-    # result = {}
-    # config = configparser.RawConfigParser()
-    # config.read("config.ini")
-    # url = config.get("Parameters", "url")
-
-    # if config.get("Parameters", "begin_date"):
-    #     begin_date = datetime.strptime(config.get("Parameters", "begin_date"), "%d.%m.%Y")
-    #     begin_date = begin_date.combine(begin_date.date(), begin_date.min.time()).isoformat()
-    # else: 
-    #     begin_date = None
-    
-    # if config.get("Parameters", "end_date"):
-    #     end_date = datetime.strptime(config.get("Parameters", "end_date"), "%d.%m.%Y")
-    #     end_date = end_date.combine(end_date.date(), end_date.max.time()).isoformat()
-    # else: 
-    #     end_date = None
-        
-    # if config.get("Parameters", "branch"):
-    #     branch = config.get("Parameters", "branch")
-    # else:
-    #     branch = "master"
 
     result = {"url": url,
              "begin_date": begin_date,
@@ -96,6 +77,7 @@ class GitHubStatistics(object):
         self._part_url = self._get_part_url()
         self._url_commits = self._get_url_commits()
         self._url_pull_requests = self._get_url_pull_requests()
+        self._url_issues = self._get_url_issues()
         self._API_KEY = self._get_api_key()
         self._since_date = since_date
         self._until_date = until_date
@@ -117,6 +99,9 @@ class GitHubStatistics(object):
 
     def _get_url_pull_requests(self):
         return self._URL_BASE + "/repos/" + self._part_url + "/pulls"
+    
+    def _get_url_issues(self):
+        return self._URL_BASE + "/repos/" + self._part_url + "/issues"
     
     def _get_api_key(self):
         u"""
@@ -330,16 +315,17 @@ def main():
     u"""
     Главная функция скрипта.
     """
-    print(datetime.now())
-    
+    time_begin = datetime.now()
+    # Ввод параметров stdin
     params = get_params()
     # try:
+    # Создание объекта статистики
     statistics_obj = GitHubStatistics(params["url"], params["begin_date"] if params["begin_date"] else None, params["end_date"] if params["end_date"] else None, params["branch"] if params["branch"] else "master")
+    # Получение статистических данных и их вывод stdout
     statistics_obj.get_statistics()
     # except Exception:
     #     print ("No statistics were received. Verify that the parameters and API_KEY are entered correctly.")
-    
-    print(datetime.now())
+    print("Script run time: " + str(time_begin - datetime.now()))
   
 if __name__ == "__main__":
     main()
