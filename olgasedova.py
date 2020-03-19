@@ -83,9 +83,12 @@ class GitHubStatistics(object):
         self._until_date = until_date
         self._branch = branch
         self._table_of_active_participants = self._get_table_of_active_participants()
-        self._pull_requeststs_open = self._get_pull_requeststs("open")
-        self._pull_requeststs_closed = self._get_pull_requeststs("closed")
-        self._pull_requeststs_old = self._get_pull_requeststs("open", True)
+        self._pull_requeststs_open = self._get_pull_requeststs_or_issues("open", False, "pulls")
+        self._pull_requeststs_closed = self._get_pull_requeststs_or_issues("closed", False, "pulls")
+        self._pull_requeststs_old = self._get_pull_requeststs_or_issues("open", True, "pulls")
+        self._issues_open = self._get_pull_requeststs_or_issues("open", False, "issues")
+        self._issues_closed = self._get_pull_requeststs_or_issues("closed", False, "issues")
+        self._issues_old = self._get_pull_requeststs_or_issues("open", True, "issues")
 
     def _get_part_url(self):
         u"""
@@ -182,14 +185,25 @@ class GitHubStatistics(object):
         else:
             return result
         
-    def _get_pull_requeststs(self, state="open", old=False):
-        
+    def _get_pull_requeststs_or_issues(self, state, old, key_search):
+        u"""
+        Возвращает количество pull_requests или issues
+        :param state: string
+        :param old: boolean
+        :param key_search: string
+        rtype: integer
+        """
         result = 0
-        pull_request_list = []
-        pull_request_dict = {}
+        result_list = []
+        if key_search == 'pulls':
+            values = {'state': state, 'base': self._branch}
+            num_days = 30
+            full_url = self._url_pull_requests + "?" + urllib.parse.urlencode(values)
+        else:
+            values = {'state': state}
+            num_days = 14
+            full_url = self._url_issues + "?" + urllib.parse.urlencode(values)
         
-        values = {'state': state, 'base': self._branch}
-        full_url = self._url_pull_requests + "?" + urllib.parse.urlencode(values)
         headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(self._API_KEY)}
         print (full_url)
         # получаем количество страниц ответа
@@ -197,44 +211,57 @@ class GitHubStatistics(object):
         print (num_of_pages)
         if num_of_pages > 0:
             for page in range(1, num_of_pages + 1):
-                values = {'state': state, 'base': self._branch, 'page': str(page)}
-                full_url = self._url_pull_requests + "?" + urllib.parse.urlencode(values)
+                if key_search == 'pulls':
+                    values = {'state': state, 'base': self._branch, 'page': str(page)}
+                    full_url = self._url_pull_requests + "?" + urllib.parse.urlencode(values)
+                else:
+                    values = {'state': state, 'page': str(page)}
+                    full_url = self._url_issues + "?" + urllib.parse.urlencode(values)
+                
                 # создание объекта-запроса
                 req = Request(full_url, None, headers)
                 the_page, header_link, header_content_length = self._get_response_data(req)
                 # Десериализовать экземпляр bytes, содержащий документ JSON, в объект Python
-                pull_request_page = json.loads(the_page)
-                pull_request_list.extend(pull_request_page)
+                result_page = json.loads(the_page)
+                result_list.extend(result_page)
             
             if old:
-                for pull_request in pull_request_list:
-                    if pull_request.get("created_at"):
+                for item_data in result_list:
+                    if item_data.get("created_at") and (key_search == 'pulls' or (key_search == 'issues' and not(item_data.get("pull_request")))):
                         if self._since_date and self._until_date:
-                            if (self._get_date_from_str(pull_request["created_at"]) >= self._get_date_from_str(self._since_date) and self._get_date_from_str(pull_request["created_at"]) <= self._get_date_from_str(self._until_date)
-                                and pull_request["state"] == "open" and (pull_request["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(pull_request["created_at"])).days > 30):
+                            if (self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date) and self._get_date_from_str(item_data["created_at"]) <= self._get_date_from_str(self._until_date)
+                                and item_data["state"] == "open" and (item_data["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(item_data["created_at"])).days > num_days):
                                 result += 1
+                                if key_search == 'pulls':
+                                    print (item_data["url"])
                         elif self._since_date and self._until_date == None:
-                            if (self._get_date_from_str(pull_request["created_at"]) >= self._get_date_from_str(self._since_date)
-                                and pull_request["state"] == "open" and (pull_request["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(pull_request["created_at"])).days > 30):
+                            if (self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date)
+                                and item_data["state"] == "open" and (item_data["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(item_data["created_at"])).days > num_days):
                                 result += 1
+                                if key_search == 'pulls':
+                                    print (item_data["url"])
                         elif self._since_date == None and self._until_date:
-                            if (self._get_date_from_str(pull_request["created_at"]) <= self._get_date_from_str(self._until_date)
-                                and pull_request["state"] == "open" and (pull_request["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(pull_request["created_at"])).days > 30):
+                            if (self._get_date_from_str(item_data["created_at"]) <= self._get_date_from_str(self._until_date)
+                                and item_data["state"] == "open" and (item_data["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(item_data["created_at"])).days > num_days):
                                 result += 1
+                                if key_search == 'pulls':
+                                    print (item_data["url"])
                         else:
-                            if (pull_request["state"] == "open" and (pull_request["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(pull_request["created_at"])).days > 30):
+                            if (item_data["state"] == "open" and (item_data["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(item_data["created_at"])).days > num_days):
                                 result += 1
+                                if key_search == 'pulls':
+                                    print (item_data["url"])
             else:
-                for pull_request in pull_request_list:
-                    if pull_request.get("created_at"):
+                for item_data in result_list:
+                    if item_data.get("created_at") and (key_search == 'pulls' or (key_search == 'issues' and not(item_data.get("pull_request")))):
                         if self._since_date and self._until_date:
-                            if self._get_date_from_str(pull_request["created_at"]) >= self._get_date_from_str(self._since_date) and self._get_date_from_str(pull_request["created_at"]) <= self._get_date_from_str(self._until_date):
+                            if self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date) and self._get_date_from_str(item_data["created_at"]) <= self._get_date_from_str(self._until_date):
                                 result += 1
                         elif self._since_date and self._until_date == None:
-                            if self._get_date_from_str(pull_request["created_at"]) >= self._get_date_from_str(self._since_date):
+                            if self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date):
                                 result += 1
                         elif self._since_date == None and self._until_date:
-                            if self._get_date_from_str(pull_request["created_at"]) <= self._get_date_from_str(self._until_date):
+                            if self._get_date_from_str(item_data["created_at"]) <= self._get_date_from_str(self._until_date):
                                 result += 1
                         else:
                             result += 1
@@ -311,6 +338,9 @@ class GitHubStatistics(object):
         sys.stdout.write("2. Number of open pull requests = " + str(self._pull_requeststs_open) + ". Number of closed pull requests = " + str(self._pull_requeststs_closed) + ".\n")
         sys.stdout.write("3. Number of old pull requests = " + str(self._pull_requeststs_old) + ".\n")
 
+        sys.stdout.write("4. Number of open issues = " + str(self._issues_open) + ". Number of closed issues = " + str(self._issues_closed) + ".\n")
+        sys.stdout.write("5. Number of old issues = " + str(self._issues_old) + ".\n")
+
 def main():
     u"""
     Главная функция скрипта.
@@ -325,7 +355,7 @@ def main():
     statistics_obj.get_statistics()
     # except Exception:
     #     print ("No statistics were received. Verify that the parameters and API_KEY are entered correctly.")
-    print("Script run time: " + str(time_begin - datetime.now()))
+    print("Script run time: " + str(datetime.now() - time_begin))
   
 if __name__ == "__main__":
     main()
