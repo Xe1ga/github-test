@@ -16,7 +16,7 @@ from collections import namedtuple
 # API_KEY = os.environ.get('API_KEY')
 ACCEPT = "application/vnd.github.v3+json"
 TIMEOUT = 15
-PER_PAGE = 100
+PER_PAGE = 30
 
 def get_params ():
     
@@ -395,11 +395,9 @@ class GitHubStatistics(object):
         if self._table_of_active_participants:
             sys.stdout.write('{0:25} | {1:10}'.format("login", "number of commits") + "\n")
             sys.stdout.write("-" * 46 + "\n")
-            cursor = 1
-            while cursor <= 30:
-                for participant in self._table_of_active_participants:
-                    sys.stdout.write('{0:25} | {1:10d}'.format(participant[0], participant[1]) + "\n")
-                    cursor += 1
+            for participant in self._table_of_active_participants[0:30]:
+                sys.stdout.write('{0:25} | {1:10d}'.format(participant[0], participant[1]) + "\n")
+                
         else:
             sys.stdout.write("There are no commits in the reporting period.\n")
 
