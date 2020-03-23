@@ -7,13 +7,16 @@ import json
 import urllib.parse
 import re
 import multiprocessing
+import socket
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 from datetime import datetime, date
-from pprint import pprint
+from collections import namedtuple
 
 # API_KEY = os.environ.get('API_KEY')
 ACCEPT = "application/vnd.github.v3+json"
+TIMEOUT = 15
+PER_PAGE = 100
 
 def get_params ():
     
@@ -74,20 +77,20 @@ def get_params ():
 def get_pages_list(since_date, until_date, headers, key_search, url_pull_requests, url_issues, url_commits, state, branch, num_of_pages):
     the_page = []   
     if key_search == 'pulls':
-        values = {'state': state, 'base': branch, 'page': str(num_of_pages)}
+        values = {'state': state, 'base': branch, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
         full_url = url_pull_requests + "?" + urllib.parse.urlencode(values)
     elif key_search == 'issues':
-        values = {'state': state, 'page': str(num_of_pages)}
+        values = {'state': state, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
         full_url = url_issues + "?" + urllib.parse.urlencode(values)
     else:
         if since_date and until_date:
-            values = {'sha': branch, 'since': since_date, 'until': until_date, 'page': str(num_of_pages)}
+            values = {'sha': branch, 'since': since_date, 'until': until_date, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
         elif since_date and until_date == None:
-            values = {'sha': branch, 'since': since_date, 'page': str(num_of_pages)}
+            values = {'sha': branch, 'since': since_date, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
         elif since_date == None and until_date:
-            values = {'sha': branch, 'until': until_date, 'page': str(num_of_pages)}
+            values = {'sha': branch, 'until': until_date, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
         else:
-            values = {'sha': branch, 'page': str(num_of_pages)}
+            values = {'sha': branch, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
 
         full_url = url_commits + "?" + urllib.parse.urlencode(values)
     
@@ -103,7 +106,7 @@ def get_pages_list(since_date, until_date, headers, key_search, url_pull_request
             print('The server couldn\'t fulfill the request.')
             print('Error code: ', e.code)
     else:   
-        the_page = response.readline()
+        the_page = response.readline().decode('utf-8')
     if the_page:   
         # Десериализовать экземпляр bytes, содержащий документ JSON, в объект Python
         result_page = json.loads(the_page)
@@ -128,7 +131,7 @@ def get_one_page(full_url, headers):
             print('The server couldn\'t fulfill the request.')
             print('Error code: ', e.code)
     else:   
-        the_page = response.readline()
+        the_page = response.readline().decode('utf-8')
     if the_page:   
         # Десериализовать экземпляр bytes, содержащий документ JSON, в объект Python
         result_page = json.loads(the_page)
@@ -148,6 +151,7 @@ class GitHubStatistics(object):
         self._since_date = since_date
         self._until_date = until_date
         self._branch = branch
+        self._limit_data = self._get_limit_data()
         self._table_of_active_participants = self._get_table_of_active_participants()
         self._pull_requeststs_open = self._get_pull_requeststs_or_issues("open", False, "pulls")
         self._pull_requeststs_closed = self._get_pull_requeststs_or_issues("closed", False, "pulls")
@@ -199,6 +203,22 @@ class GitHubStatistics(object):
         else: 
             return None
 
+    def _get_limit_data(self):
+
+        limit_data = namedtuple("limit_data", "limit remaining reset")
+        full_url = self._URL_BASE + "/rate_limit"
+        headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(self._API_KEY)}
+        # получаем количество страниц ответа
+        speed_limit_data = get_one_page(full_url, headers)
+        print("Core limit = " + str(speed_limit_data["resources"]["core"]["limit"]) + "(remaining = " + str(speed_limit_data["resources"]["core"]["remaining"]) + ").")
+        print ("Reset: " + str(datetime.fromtimestamp(speed_limit_data["resources"]["core"]["reset"])))
+        if speed_limit_data:
+            result = limit_data(speed_limit_data["resources"]["core"]["limit"], speed_limit_data["resources"]["core"]["remaining"], speed_limit_data["resources"]["core"]["reset"])
+        else:
+            result = None
+        
+        return result
+      
     
     def _get_table_of_active_participants(self):
         
@@ -206,13 +226,13 @@ class GitHubStatistics(object):
         commit_list = []
         commit_dict = {}
         if self._since_date and self._until_date:
-            values = {'sha': self._branch, 'since': self._since_date, 'until': self._until_date}
+            values = {'sha': self._branch, 'since': self._since_date, 'until': self._until_date, 'per_page': str(PER_PAGE)}
         elif self._since_date and self._until_date == None:
-            values = {'sha': self._branch, 'since': self._since_date}
+            values = {'sha': self._branch, 'since': self._since_date, 'per_page': str(PER_PAGE)}
         elif self._since_date == None and self._until_date:
-            values = {'sha': self._branch, 'until': self._until_date}
+            values = {'sha': self._branch, 'until': self._until_date, 'per_page': str(PER_PAGE)}
         else:
-            values = {'sha': self._branch}
+            values = {'sha': self._branch, 'per_page': str(PER_PAGE)}
         full_url = self._url_commits + "?" + urllib.parse.urlencode(values)
         headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(self._API_KEY)}
         
@@ -222,24 +242,6 @@ class GitHubStatistics(object):
         print(num_of_pages)
         if num_of_pages > 0:
             t1 = datetime.now()
-            # for page in range(1, num_of_pages + 1):
-                
-            #     if self._since_date and self._until_date:
-            #         values = {'sha': self._branch, 'since': self._since_date, 'until': self._until_date, 'page': str(page)}
-            #     elif self._since_date and self._until_date == None:
-            #         values = {'sha': self._branch, 'since': self._since_date, 'page': str(page)}
-            #     elif self._since_date == None and self._until_date:
-            #         values = {'sha': self._branch, 'until': self._until_date, 'page': str(page)}
-            #     else:
-            #         values = {'sha': self._branch, 'page': str(page)}
-
-            #     full_url = self._url_commits + "?" + urllib.parse.urlencode(values)
-            #     # создание объекта-запроса
-            #     req = Request(full_url, None, headers)
-            #     the_page, header_link, header_content_length = self._get_response_data(req)
-            #     # Десериализовать экземпляр bytes, содержащий документ JSON, в объект Python
-            #     commit_page = json.loads(the_page)
-            #     commit_list.extend(commit_page)
             TASKS = [(self._since_date, self._until_date, headers, "", self._url_pull_requests, self._url_issues, self._url_commits, "", self._branch, i) for i in range(1, num_of_pages + 1)]
             pool = multiprocessing.Pool(4)
             # получаем список списков постранично, отдельный элемент - словарь, например [[{issue1},{issue2},...],[{issue31},{issue32},...],...]
@@ -271,11 +273,11 @@ class GitHubStatistics(object):
         result = 0
         result_list = []
         if key_search == 'pulls':
-            values = {'state': state, 'base': self._branch}
+            values = {'state': state, 'base': self._branch, 'per_page': str(PER_PAGE)}
             num_days = 30
             full_url = self._url_pull_requests + "?" + urllib.parse.urlencode(values)
         else:
-            values = {'state': state}
+            values = {'state': state, 'per_page': str(PER_PAGE)}
             num_days = 14
             full_url = self._url_issues + "?" + urllib.parse.urlencode(values)
         
@@ -285,21 +287,6 @@ class GitHubStatistics(object):
         num_of_pages = self._get_num_of_pages(full_url, headers)
         print(full_url)
         print(num_of_pages)
-        # if num_of_pages > 0:
-        #     for page in range(1, num_of_pages + 1):
-        #         if key_search == 'pulls':
-        #             values = {'state': state, 'base': self._branch, 'page': str(page)}
-        #             full_url = self._url_pull_requests + "?" + urllib.parse.urlencode(values)
-        #         else:
-        #             values = {'state': state, 'page': str(page)}
-        #             full_url = self._url_issues + "?" + urllib.parse.urlencode(values)
-                
-        #         # создание объекта-запроса
-        #         req = Request(full_url, None, headers)
-        #         the_page, header_link, header_content_length = self._get_response_data(req)
-        #         # Десериализовать экземпляр bytes, содержащий документ JSON, в объект Python
-        #         result_page = json.loads(the_page)
-        #         result_list.extend(result_page)
         if num_of_pages > 0:
             t1 = datetime.now()
             TASKS = [(self._since_date, self._until_date, headers, key_search, self._url_pull_requests, self._url_issues, self._url_commits, state, self._branch, i) for i in range(1, num_of_pages + 1)]
@@ -364,7 +351,7 @@ class GitHubStatistics(object):
                 print('The server couldn\'t fulfill the request.')
                 print('Error code: ', e.code)
         else:   
-            the_page = response.readline()
+            the_page = response.readline().decode('utf-8')
             header_link = response.headers['Link']
             header_content_length = int(response.headers['Content-Length'])
             # header = response.getheaders()
@@ -394,7 +381,8 @@ class GitHubStatistics(object):
                     url = url[1:-1]
                     rel = rel[5:-1]
                     links_dict[rel] = url
-                last_page = links_dict.get("last").split("page=")[1]
+                # пример links_dict = {'next': 'https://api.github.com/repositories/27442967/commits?sha=master&per_page=100&page=2', 'last': 'https://api.github.com/repositories/27442967/commits?sha=master&per_page=100&page=154'}
+                last_page = links_dict.get("last").split("page=")[2]
                 return int(last_page)
         else:
             return 0
@@ -407,11 +395,11 @@ class GitHubStatistics(object):
         if self._table_of_active_participants:
             sys.stdout.write('{0:25} | {1:10}'.format("login", "number of commits") + "\n")
             sys.stdout.write("-" * 46 + "\n")
-            number_of_commits = 0
-            for participant in self._table_of_active_participants:
-                sys.stdout.write('{0:25} | {1:10d}'.format(participant[0], participant[1]) + "\n")
-                number_of_commits += participant[1]
-            sys.stdout.write("Number of commits = " + str(number_of_commits) + ".\n")
+            cursor = 1
+            while cursor <= 30:
+                for participant in self._table_of_active_participants:
+                    sys.stdout.write('{0:25} | {1:10d}'.format(participant[0], participant[1]) + "\n")
+                    cursor += 1
         else:
             sys.stdout.write("There are no commits in the reporting period.\n")
 
@@ -421,15 +409,11 @@ class GitHubStatistics(object):
         sys.stdout.write("4. Number of open issues = " + str(self._issues_open) + ". Number of closed issues = " + str(self._issues_closed) + ".\n")
         sys.stdout.write("5. Number of old issues = " + str(self._issues_old) + ".\n")
 
-        full_url = self._URL_BASE + "/rate_limit"
-        headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(self._API_KEY)}
-        # получаем количество страниц ответа
-        speed_limit_data = get_one_page(full_url, headers)
-        print("Core limit = " + str(speed_limit_data["resources"]["core"]["limit"]) + "(remaining = " + str(speed_limit_data["resources"]["core"]["remaining"]) + ").")
-        print("Search limit = " + str(speed_limit_data["resources"]["search"]["limit"]) + "(remaining = " + str(speed_limit_data["resources"]["search"]["remaining"]) + ").")
 if __name__ == "__main__":
 
     multiprocessing.freeze_support()
+    socket.setdefaulttimeout(TIMEOUT)
+    
     time_begin = datetime.now()
     # Ввод параметров stdin
     params = get_params()
