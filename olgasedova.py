@@ -16,7 +16,7 @@ from collections import namedtuple
 # API_KEY = os.environ.get('API_KEY')
 ACCEPT = "application/vnd.github.v3+json"
 TIMEOUT = 15
-PER_PAGE = 30
+PER_PAGE = 100
 
 def get_params ():
     
@@ -77,22 +77,22 @@ def get_params ():
 def get_pages_list(since_date, until_date, headers, key_search, url_pull_requests, url_issues, url_commits, state, branch, num_of_pages):
     the_page = []   
     if key_search == 'pulls':
-        values = {'state': state, 'base': branch, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
-        full_url = url_pull_requests + "?" + urllib.parse.urlencode(values)
+        url_parameters = {'state': state, 'base': branch, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
+        full_url = url_pull_requests + "?" + urllib.parse.urlencode(url_parameters)
     elif key_search == 'issues':
-        values = {'state': state, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
-        full_url = url_issues + "?" + urllib.parse.urlencode(values)
+        url_parameters = {'state': state, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
+        full_url = url_issues + "?" + urllib.parse.urlencode(url_parameters)
     else:
         if since_date and until_date:
-            values = {'sha': branch, 'since': since_date, 'until': until_date, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
+            url_parameters = {'sha': branch, 'since': since_date, 'until': until_date, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
         elif since_date and until_date == None:
-            values = {'sha': branch, 'since': since_date, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
+            url_parameters = {'sha': branch, 'since': since_date, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
         elif since_date == None and until_date:
-            values = {'sha': branch, 'until': until_date, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
+            url_parameters = {'sha': branch, 'until': until_date, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
         else:
-            values = {'sha': branch, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
+            url_parameters = {'sha': branch, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
 
-        full_url = url_commits + "?" + urllib.parse.urlencode(values)
+        full_url = url_commits + "?" + urllib.parse.urlencode(url_parameters)
     
     # создание объекта-запроса
     req = Request(full_url, None, headers)
@@ -226,14 +226,14 @@ class GitHubStatistics(object):
         commit_list = []
         commit_dict = {}
         if self._since_date and self._until_date:
-            values = {'sha': self._branch, 'since': self._since_date, 'until': self._until_date, 'per_page': str(PER_PAGE)}
+            url_parameters = {'sha': self._branch, 'since': self._since_date, 'until': self._until_date, 'per_page': str(PER_PAGE)}
         elif self._since_date and self._until_date == None:
-            values = {'sha': self._branch, 'since': self._since_date, 'per_page': str(PER_PAGE)}
+            url_parameters = {'sha': self._branch, 'since': self._since_date, 'per_page': str(PER_PAGE)}
         elif self._since_date == None and self._until_date:
-            values = {'sha': self._branch, 'until': self._until_date, 'per_page': str(PER_PAGE)}
+            url_parameters = {'sha': self._branch, 'until': self._until_date, 'per_page': str(PER_PAGE)}
         else:
-            values = {'sha': self._branch, 'per_page': str(PER_PAGE)}
-        full_url = self._url_commits + "?" + urllib.parse.urlencode(values)
+            url_parameters = {'sha': self._branch, 'per_page': str(PER_PAGE)}
+        full_url = self._url_commits + "?" + urllib.parse.urlencode(url_parameters)
         headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(self._API_KEY)}
         
         # получаем количество страниц ответа
@@ -273,13 +273,13 @@ class GitHubStatistics(object):
         result = 0
         result_list = []
         if key_search == 'pulls':
-            values = {'state': state, 'base': self._branch, 'per_page': str(PER_PAGE)}
+            url_parameters = {'state': state, 'base': self._branch, 'per_page': str(PER_PAGE)}
             num_days = 30
-            full_url = self._url_pull_requests + "?" + urllib.parse.urlencode(values)
+            full_url = self._url_pull_requests + "?" + urllib.parse.urlencode(url_parameters)
         else:
-            values = {'state': state, 'per_page': str(PER_PAGE)}
+            url_parameters = {'state': state, 'per_page': str(PER_PAGE)}
             num_days = 14
-            full_url = self._url_issues + "?" + urllib.parse.urlencode(values)
+            full_url = self._url_issues + "?" + urllib.parse.urlencode(url_parameters)
         
         headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(self._API_KEY)}
         
@@ -319,6 +319,7 @@ class GitHubStatistics(object):
                             if self._since_date and self._until_date:
                                 if self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date) and self._get_date_from_str(item_data["created_at"]) <= self._get_date_from_str(self._until_date):
                                     result += 1
+                                    print (item_data["number"])
                             elif self._since_date and self._until_date == None:
                                 if self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date):
                                     result += 1
