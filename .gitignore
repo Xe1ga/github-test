@@ -353,3 +353,5 @@ MigrationBackup/
 github-test-env
 
 .vscode/
+# ignore authentication.ini
+authentication.ini
