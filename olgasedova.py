@@ -93,31 +93,22 @@ def get_pages_list(since_date, until_date, headers, key_search, url_pull_request
             url_parameters = {'sha': branch, 'page': str(num_of_pages), 'per_page': str(PER_PAGE)}
 
         full_url = url_commits + "?" + urllib.parse.urlencode(url_parameters)
-    
-    # создание объекта-запроса
-    req = Request(full_url, None, headers)
-    try:
-        response = urlopen(req)
-    except URLError as e:
-        if hasattr(e, 'reason'):
-            print('We failed to reach a server.')
-            print('Reason: ', e.reason)
-        elif hasattr(e, 'code'):
-            print('The server couldn\'t fulfill the request.')
-            print('Error code: ', e.code)
-    else:   
-        the_page = response.readline().decode('utf-8')
-    if the_page:   
-        # Десериализовать экземпляр bytes, содержащий документ JSON, в объект Python
-        result_page = json.loads(the_page)
-    else:
-        result_page = []
-    return result_page
+    if full_url:
+        the_page, header_link, header_content_length = get_response_data(full_url, headers)
+
+    return the_page
 
 def get_pages(args):
     return get_pages_list(*args)
 
-def get_one_page(full_url, headers):
+def get_response_data(full_url, headers):
+    u"""
+    Возвращает содержимое объекта Response
+    :param req: :class: Request
+    rtype: bytes
+    rtype: string
+    rtype: integer
+    """
     the_page = []   
     # создание объекта-запроса
     req = Request(full_url, None, headers)
@@ -130,14 +121,18 @@ def get_one_page(full_url, headers):
         elif hasattr(e, 'code'):
             print('The server couldn\'t fulfill the request.')
             print('Error code: ', e.code)
-    else:   
+    else:
+        #получаем результат - ответ с заголовками 
         the_page = response.readline().decode('utf-8')
+        header_link = response.headers['Link']
+        header_content_length = int(response.headers['Content-Length'])
+        # header = response.getheaders()
     if the_page:   
         # Десериализовать экземпляр bytes, содержащий документ JSON, в объект Python
         result_page = json.loads(the_page)
     else:
         result_page = []
-    return result_page
+    return result_page, header_link, header_content_length
 
 class GitHubStatistics(object):
     def __init__(self, url_repository, since_date, until_date, branch):
@@ -209,7 +204,7 @@ class GitHubStatistics(object):
         full_url = self._URL_BASE + "/rate_limit"
         headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(self._API_KEY)}
         # получаем количество страниц ответа
-        speed_limit_data = get_one_page(full_url, headers)
+        speed_limit_data, header_link, header_content_length = get_response_data(full_url, headers)
         print("Core limit = " + str(speed_limit_data["resources"]["core"]["limit"]) + "(remaining = " + str(speed_limit_data["resources"]["core"]["remaining"]) + ").")
         print ("Reset: " + str(datetime.fromtimestamp(speed_limit_data["resources"]["core"]["reset"])))
         if speed_limit_data:
@@ -319,7 +314,6 @@ class GitHubStatistics(object):
                             if self._since_date and self._until_date:
                                 if self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date) and self._get_date_from_str(item_data["created_at"]) <= self._get_date_from_str(self._until_date):
                                     result += 1
-                                    print (item_data["number"])
                             elif self._since_date and self._until_date == None:
                                 if self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date):
                                     result += 1
@@ -333,30 +327,6 @@ class GitHubStatistics(object):
             return result
         else:
             return result
-
-    def _get_response_data(self, req):
-        u"""
-        Возвращает содержимое объекта Response
-        :param req: :class: Request
-        rtype: bytes
-        rtype: string
-        rtype: integer
-        """
-        try:
-            response = urlopen(req)
-        except URLError as e:
-            if hasattr(e, 'reason'):
-                print('We failed to reach a server.')
-                print('Reason: ', e.reason)
-            elif hasattr(e, 'code'):
-                print('The server couldn\'t fulfill the request.')
-                print('Error code: ', e.code)
-        else:   
-            the_page = response.readline().decode('utf-8')
-            header_link = response.headers['Link']
-            header_content_length = int(response.headers['Content-Length'])
-            # header = response.getheaders()
-            return the_page, header_link, header_content_length
     
     def _get_num_of_pages(self, full_url, headers):
         """
@@ -365,10 +335,8 @@ class GitHubStatistics(object):
         :param headers: dictionary
         :rtype: integer
         """
-        #создаем объект запроса
-        req = Request(full_url, None, headers)
         #получаем результат - ответ с заголовками
-        the_page, header_link, header_content_length = self._get_response_data(req)
+        the_page, header_link, header_content_length = get_response_data(full_url, headers)
         # если поиск с параметрами дал результат
         if header_content_length > 2:
             # если страница одна, то заголовка Link не будет
@@ -416,6 +384,7 @@ if __name__ == "__main__":
     time_begin = datetime.now()
     # Ввод параметров stdin
     params = get_params()
+    sys.stdout.write("Please wait, a report is being generated.\n")
     # try:
     # Создание объекта статистики
     # pool = multiprocessing.Pool()
