@@ -109,10 +109,11 @@ def get_response_data(full_url, headers):
     rtype: string
     rtype: integer
     """
-    the_page = []   
+    the_page = {}   
     # создание объекта-запроса
     req = Request(full_url, None, headers)
     try:
+        # пытаемся получить HTTPResponse или исключение
         response = urlopen(req)
     except URLError as e:
         if hasattr(e, 'reason'):
@@ -121,17 +122,20 @@ def get_response_data(full_url, headers):
         elif hasattr(e, 'code'):
             print('The server couldn\'t fulfill the request.')
             print('Error code: ', e.code)
+        
+        # header_status = str(response.headers.get('Status')[:3])
+        # print("{status} {data}".format(status=self.status, data=json.loads(response.readline().decode('utf-8')).get("message")))
     else:
         #получаем результат - ответ с заголовками 
         the_page = response.readline().decode('utf-8')
-        header_link = response.headers['Link']
-        header_content_length = int(response.headers['Content-Length'])
+        header_link = response.headers.get('Link')
+        header_content_length = int(response.headers.get('Content-Length'))
         # header = response.getheaders()
     if the_page:   
         # Десериализовать экземпляр bytes, содержащий документ JSON, в объект Python
         result_page = json.loads(the_page)
     else:
-        result_page = []
+        result_page = {}
     return result_page, header_link, header_content_length
 
 class GitHubStatistics(object):
@@ -205,10 +209,10 @@ class GitHubStatistics(object):
         headers = {'Accept': ACCEPT, 'Authorization': "Token {}".format(self._API_KEY)}
         # получаем количество страниц ответа
         speed_limit_data, header_link, header_content_length = get_response_data(full_url, headers)
-        print("Core limit = " + str(speed_limit_data["resources"]["core"]["limit"]) + "(remaining = " + str(speed_limit_data["resources"]["core"]["remaining"]) + ").")
-        print ("Reset: " + str(datetime.fromtimestamp(speed_limit_data["resources"]["core"]["reset"])))
+        print("Core limit = " + str(speed_limit_data.get("resources").get("core").get("limit")) + "(remaining = " + str(speed_limit_data.get("resources").get("core").get("remaining")) + ").")
+        print ("Reset: " + str(datetime.fromtimestamp(speed_limit_data.get("resources").get("core").get("reset"))))
         if speed_limit_data:
-            result = limit_data(speed_limit_data["resources"]["core"]["limit"], speed_limit_data["resources"]["core"]["remaining"], speed_limit_data["resources"]["core"]["reset"])
+            result = limit_data(speed_limit_data.get("resources").get("core").get("limit"), speed_limit_data.get("resources").get("core").get("remaining"), speed_limit_data.get("resources").get("core").get("reset"))
         else:
             result = None
         
@@ -233,10 +237,10 @@ class GitHubStatistics(object):
         
         # получаем количество страниц ответа
         num_of_pages = self._get_num_of_pages(full_url, headers)
-        print(full_url)
-        print(num_of_pages)
+        # print(full_url)
+        # print(num_of_pages)
         if num_of_pages > 0:
-            t1 = datetime.now()
+            # t1 = datetime.now()
             TASKS = [(self._since_date, self._until_date, headers, "", self._url_pull_requests, self._url_issues, self._url_commits, "", self._branch, i) for i in range(1, num_of_pages + 1)]
             pool = multiprocessing.Pool(4)
             # получаем список списков постранично, отдельный элемент - словарь, например [[{issue1},{issue2},...],[{issue31},{issue32},...],...]
@@ -244,15 +248,15 @@ class GitHubStatistics(object):
             for page_list in commit_list:
                 for commit in page_list:
                     if commit.get("author"):
-                        login = commit["author"]["login"]
+                        login = commit.get("author").get("login")
                         if commit_dict.get(login):
                             commit_dict[login] += 1
                         else: 
                             commit_dict[login] = 1
             for login, commits in commit_dict.items():
                 result.append ((login, commits))
-            t2 = datetime.now()
-            print("Enumeration of pages: " + str(t2 - t1))
+            # t2 = datetime.now()
+            # print("Enumeration of pages: " + str(t2 - t1))
             return sorted(result, key=lambda participant: participant[1], reverse = True)   # сортировка
         else:
             return result
@@ -280,10 +284,10 @@ class GitHubStatistics(object):
         
         # получаем количество страниц ответа
         num_of_pages = self._get_num_of_pages(full_url, headers)
-        print(full_url)
-        print(num_of_pages)
+        # print(full_url)
+        # print(num_of_pages)
         if num_of_pages > 0:
-            t1 = datetime.now()
+            # t1 = datetime.now()
             TASKS = [(self._since_date, self._until_date, headers, key_search, self._url_pull_requests, self._url_issues, self._url_commits, state, self._branch, i) for i in range(1, num_of_pages + 1)]
             pool = multiprocessing.Pool(4)
             # получаем список списков постранично, отдельный элемент - словарь [[{issue1},{issue2},...],[{issue31},{issue32},...],...]
@@ -293,37 +297,37 @@ class GitHubStatistics(object):
                     for item_data in page_list:
                         if item_data.get("created_at") and (key_search == 'pulls' or (key_search == 'issues' and not(item_data.get("pull_request")))):
                             if self._since_date and self._until_date:
-                                if (self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date) and self._get_date_from_str(item_data["created_at"]) <= self._get_date_from_str(self._until_date)
-                                    and item_data["state"] == "open" and (item_data["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(item_data["created_at"])).days > num_days):
+                                if (self._get_date_from_str(item_data.get("created_at")) >= self._get_date_from_str(self._since_date) and self._get_date_from_str(item_data.get("created_at")) <= self._get_date_from_str(self._until_date)
+                                    and item_data.get("state") == "open" and (item_data.get("closed_at") == None) and abs(datetime.now().date() - self._get_date_from_str(item_data.get("created_at"))).days > num_days):
                                     result += 1
                             elif self._since_date and self._until_date == None:
-                                if (self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date)
-                                    and item_data["state"] == "open" and (item_data["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(item_data["created_at"])).days > num_days):
+                                if (self._get_date_from_str(item_data.get("created_at")) >= self._get_date_from_str(self._since_date)
+                                    and item_data.get("state") == "open" and (item_data.get("closed_at") == None) and abs(datetime.now().date() - self._get_date_from_str(item_data.get("created_at"))).days > num_days):
                                     result += 1
                             elif self._since_date == None and self._until_date:
-                                if (self._get_date_from_str(item_data["created_at"]) <= self._get_date_from_str(self._until_date)
-                                    and item_data["state"] == "open" and (item_data["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(item_data["created_at"])).days > num_days):
+                                if (self._get_date_from_str(item_data.get("created_at")) <= self._get_date_from_str(self._until_date)
+                                    and item_data.get("state") == "open" and (item_data.get("closed_at") == None) and abs(datetime.now().date() - self._get_date_from_str(item_data.get("created_at"))).days > num_days):
                                     result += 1
                             else:
-                                if (item_data["state"] == "open" and (item_data["closed_at"] == None) and abs(datetime.now().date() - self._get_date_from_str(item_data["created_at"])).days > num_days):
+                                if (item_data.get("state") == "open" and (item_data.get("closed_at") == None) and abs(datetime.now().date() - self._get_date_from_str(item_data.get("created_at"))).days > num_days):
                                     result += 1
             else:
                 for page_list in result_list:
                     for item_data in page_list:
                         if item_data.get("created_at") and (key_search == 'pulls' or (key_search == 'issues' and not(item_data.get("pull_request")))):
                             if self._since_date and self._until_date:
-                                if self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date) and self._get_date_from_str(item_data["created_at"]) <= self._get_date_from_str(self._until_date):
+                                if self._get_date_from_str(item_data.get("created_at")) >= self._get_date_from_str(self._since_date) and self._get_date_from_str(item_data.get("created_at")) <= self._get_date_from_str(self._until_date):
                                     result += 1
                             elif self._since_date and self._until_date == None:
-                                if self._get_date_from_str(item_data["created_at"]) >= self._get_date_from_str(self._since_date):
+                                if self._get_date_from_str(item_data.get("created_at")) >= self._get_date_from_str(self._since_date):
                                     result += 1
                             elif self._since_date == None and self._until_date:
-                                if self._get_date_from_str(item_data["created_at"]) <= self._get_date_from_str(self._until_date):
+                                if self._get_date_from_str(item_data.get("created_at")) <= self._get_date_from_str(self._until_date):
                                     result += 1
                             else:
                                 result += 1
-            t2 = datetime.now()
-            print("Enumeration of pages: " + str(t2 - t1))
+            # t2 = datetime.now()
+            # print("Enumeration of pages: " + str(t2 - t1))
             return result
         else:
             return result
